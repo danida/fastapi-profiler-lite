@@ -1,0 +1,9 @@
+include LICENSE
+include README.md
+include MANIFEST.in
+include pyproject.toml
+recursive-include fastapi_profiler/static *
+recursive-include fastapi_profiler/static/templates *
+recursive-include fastapi_profiler/static/css *
+recursive-include fastapi_profiler/static/js *
+recursive-include docs *

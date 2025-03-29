@@ -1,0 +1,52 @@
+[tool.poetry]
+name = "fastapi-profiler-lite"
+version = "0.1.0"
+description = "Lightweight performance profiler for FastAPI applications"
+authors = ["Alexander Lind <al91liwo@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/al91liwo/fastapi-profiler"
+documentation = "https://github.com/al91liwo/fastapi-profiler/tree/main/docs"
+keywords = ["fastapi", "profiler", "performance", "monitoring", "lightweight"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Framework :: FastAPI",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+packages = [{include = "fastapi_profiler"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<4.0"
+fastapi = ">=0.68.0"
+starlette = ">=0.14.2"
+jinja2 = ">=3.1.2"
+
+[tool.poetry.extras]
+standard = ["uvicorn"]
+dev = ["pytest", "black", "isort", "flake8", "uvicorn"]
+
+[tool.poetry.dependencies.uvicorn]
+version = ">=0.14.0"
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=6.0.0"
+ruff = ">=0.1.0"
+uvicorn = ">=0.14.0"
+httpx = ">=0.24.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+lint.select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

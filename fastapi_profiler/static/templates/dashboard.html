@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI Profiler</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <link rel="stylesheet" href="{{css_path}}">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800">FastAPI Profiler</h1>
+                    <p class="text-gray-600">Performance monitoring dashboard</p>
+                </div>
+                <div class="flex gap-4">
+                    <select id="refresh-rate" class="form-select rounded border-gray-300 shadow-sm">
+                        <option value="1000">Refresh: 1s</option>
+                        <option value="2000" selected>Refresh: 2s</option>
+                        <option value="5000">Refresh: 5s</option>
+                        <option value="10000">Refresh: 10s</option>
+                        <option value="30000">Refresh: 30s</option>
+                        <option value="0">Manual refresh</option>
+                    </select>
+                    <button id="refresh-btn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="stat-card">
+                <div class="text-xs text-gray-500 uppercase mb-1">Total Requests</div>
+                <div id="stat-total-requests" class="text-2xl font-bold text-gray-800">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="text-xs text-gray-500 uppercase mb-1">Avg Response Time</div>
+                <div id="stat-avg-response-time" class="text-2xl font-bold text-indigo-600">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="text-xs text-gray-500 uppercase mb-1">Max Response Time</div>
+                <div id="stat-max-response-time" class="text-2xl font-bold text-red-600">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="text-xs text-gray-500 uppercase mb-1">Unique Endpoints</div>
+                <div id="stat-unique-endpoints" class="text-2xl font-bold text-green-600">-</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="mb-8">
+            <div class="border-b border-gray-200">
+                <nav class="flex -mb-px">
+                    <a id="tab-overview" class="tab active">Overview</a>
+                    <a id="tab-endpoints" class="tab">Endpoints</a>
+                    <a id="tab-requests" class="tab">Recent Requests</a>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="tab-content" class="mb-8">
+            <!-- Overview Tab (default) -->
+            <div id="content-overview" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="text-lg font-semibold text-gray-700">Response Time Trend</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="response-time-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="text-lg font-semibold text-gray-700">Requests by Method</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="requests-by-method-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="text-lg font-semibold text-gray-700">Slowest Endpoints</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table id="slowest-endpoints-table" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Path</th>
+                                        <th>Avg Time (ms)</th>
+                                        <th>Max Time (ms)</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="5" class="text-center py-4 text-gray-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Endpoints Tab -->
+            <div id="content-endpoints" class="tab-content hidden">
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-semibold text-gray-700">Endpoint Performance</h2>
+                            <div class="flex items-center">
+                                <input type="text" id="endpoint-search" placeholder="Search endpoints..." 
+                                       class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table id="endpoints-table" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th class="cursor-pointer" data-sort="method">Method</th>
+                                        <th class="cursor-pointer" data-sort="path">Path</th>
+                                        <th class="cursor-pointer" data-sort="avg">Avg Time (ms)</th>
+                                        <th class="cursor-pointer" data-sort="max">Max Time (ms)</th>
+                                        <th class="cursor-pointer" data-sort="min">Min Time (ms)</th>
+                                        <th class="cursor-pointer" data-sort="count">Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="6" class="text-center py-4 text-gray-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="text-lg font-semibold text-gray-700">Endpoint Distribution</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="endpoint-distribution-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Requests Tab -->
+            <div id="content-requests" class="tab-content hidden">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-semibold text-gray-700">Recent Requests</h2>
+                            <div class="flex items-center">
+                                <input type="text" id="request-search" placeholder="Search requests..." 
+                                       class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table id="requests-table" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th class="cursor-pointer" data-sort="timestamp">Timestamp</th>
+                                        <th class="cursor-pointer" data-sort="method">Method</th>
+                                        <th class="cursor-pointer" data-sort="path">Path</th>
+                                        <th class="cursor-pointer" data-sort="time">Time (ms)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="4" class="text-center py-4 text-gray-500">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{js_path}}"></script>
+    <script>
+        // Initialize the dashboard when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof window.initDashboard === 'function') {
+                window.initDashboard('{{api_path}}');
+            } else {
+                console.error('initDashboard function not found');
+            }
+        });
+    </script>
+</body>
+</html>
