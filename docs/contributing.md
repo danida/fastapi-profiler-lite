@@ -21,6 +21,20 @@ python example.py
 
 Then visit http://127.0.0.1:8000/profiler in your browser.
 
+## Development Pipeline
+
+Our development pipeline includes several automated checks and processes:
+
+1. **Continuous Integration**: All pull requests trigger automated tests on multiple Python versions (3.8, 3.9, 3.10, 3.11)
+2. **Code Quality**: We use ruff for linting and formatting
+3. **Conventional Commits**: We follow the [Conventional Commits](https://www.conventionalcommits.org/) standard for commit messages
+   - Format: `type(scope): description` (e.g., `feat(dashboard): add new chart`)
+   - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+4. **Semantic Versioning**: Version numbers are automatically determined based on commit messages
+5. **Automated Releases**: When merged to main, semantic-release creates a new release if needed
+
+When submitting a PR, the GitHub Actions workflow will automatically check your code and commits.
+
 ## Code Style
 
 We use ruff for code formatting and linting. More detailed style guides will be added as the project matures.
