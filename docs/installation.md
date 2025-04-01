@@ -46,13 +46,28 @@ poetry install
 ## Quick Start
 
 ```bash
-# Run examples
+# Run basic example
 python example.py
 ```
 
 Open your browser to:
 - http://127.0.0.1:8000/ - API endpoints
 - http://127.0.0.1:8000/profiler - Profiler dashboard
+
+## Interactive Demo
+
+For a more interactive experience with automatic browser launch and simulated traffic:
+
+```bash
+# Run interactive demo with browser
+python examples/demo_with_browser.py
+```
+
+This will:
+1. Start a FastAPI server with the profiler
+2. Open the dashboard in your default browser
+3. Generate sample requests with varying response times
+4. Show real-time profiling data in the dashboard
 
 ## Verifying Installation
 
