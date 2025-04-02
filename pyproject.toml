@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastapi-profiler-lite"
-version = "0.2.1"
+version = "0.2.2"
 description = "Lightweight performance profiler for FastAPI applications"
 authors = ["Alexander Lind <al91liwo@gmail.com>"]
 license = "MIT"
