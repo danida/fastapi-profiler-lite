@@ -1,3 +1,10 @@
+## [0.2.3](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.2...v0.2.3) (2025-04-02)
+
+
+### Continuous Integration
+
+* use conventionalcommits preset ([499616c](https://github.com/al91liwo/fastapi-profiler-lite/commit/499616c56c19dc7d95091012cfc2738b3cd58ce9))
+
 ## [0.2.2](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.1...v0.2.2) (2025-04-02)
 
 ## [0.2.1](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.0...v0.2.1) (2025-04-01)
