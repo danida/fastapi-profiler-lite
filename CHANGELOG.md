@@ -1,3 +1,10 @@
+## [0.2.4](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.3...v0.2.4) (2025-04-04)
+
+
+### Code Refactoring
+
+* rewrite the core as a rust module ([e347b7e](https://github.com/al91liwo/fastapi-profiler-lite/commit/e347b7eb9b5fefb7fb01cd7461887bc23ca9fcb4))
+
 ## [0.2.3](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.2...v0.2.3) (2025-04-02)
 
 
