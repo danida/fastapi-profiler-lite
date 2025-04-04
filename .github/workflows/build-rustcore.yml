@@ -1,10 +1,7 @@
 name: Build, Test and Publish Rust Core
 
 on:
-  push:
-    branches: [main, feature/**]
-    paths:
-      - 'fastapi_profiler/rustcore/**'
+  workflow_call: {}
   workflow_dispatch:
 
 permissions:
@@ -46,7 +43,7 @@ jobs:
       - name: Install maturin
         run: pip install maturin
 
-      - name: Build wheel (manylinux for Linux)
+      - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           command: build
@@ -102,19 +99,26 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Download wheels
-        uses: actions/download-artifact@v4
-        with:
-          path: ./wheels
-          merge-multiple: true
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install tools
-        run: pip install twine toml
+        run: |
+          pip install twine toml
+          pip install --upgrade pip setuptools wheel
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: ./wheels
+          merge-multiple: true
+
+      - name: List downloaded wheel files
+        run: |
+          echo "✅ Downloaded wheel files:"
+          find ./wheels -name "*.whl"
 
       - name: Bump version
         id: bump-version
@@ -149,18 +153,27 @@ jobs:
                   fastapi_profiler/rustcore/setup.py \
                   fastapi_profiler/rustcore/__init__.py \
                   pyproject.toml
-          git commit -m "chore: bump rustcore version to $NEW_VERSION [skip ci]"
+          git commit -m "chore(rustcore): bump rustcore version to $NEW_VERSION [skip ci]"
           git push
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+      - name: Debug token presence
         run: |
-          python -m twine upload --non-interactive --skip-existing wheels/**/*.whl
+          echo "PYPI_TOKEN is ${PYPI_TOKEN:+set}"
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
-      - name: Trigger downstream test workflow
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: rust-package-published
+      - name: Publish Rust core
+        working-directory: fastapi_profiler/rustcore
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install twine
+          echo "Uploading wheels with token: ${PYPI_TOKEN:0:4}***"
+          for wheel in ../../wheels/*.whl; do
+            twine upload \
+              --repository-url https://upload.pypi.org/legacy/ \
+              --username __token__ \
+              --password "$PYPI_TOKEN" \
+              --skip-existing \
+              "$wheel"
+          done
