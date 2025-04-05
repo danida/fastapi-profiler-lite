@@ -19,6 +19,12 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Ensure branch is up-to-date
+        run: |
+          git fetch origin
+          git reset --hard origin/main
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
