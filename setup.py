@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fastapi-profiler-lite",
-    version="0.2.4",
+    version="0.2.5",
     description="A lightweight performance profiler for FastAPI applications",
     author="Alexander Lind",
     author_email="al91liwo@gmail.com",
