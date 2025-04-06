@@ -1,3 +1,10 @@
+## [0.3.1](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.3.0...v0.3.1) (2025-04-06)
+
+
+### Continuous Integration
+
+* fix version management of fastapi-profiler-rust ([bb707ab](https://github.com/al91liwo/fastapi-profiler-lite/commit/bb707ab60b1c13f3c15e324e6392c7481659bc90))
+
 ## [0.3.0](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.5...v0.3.0) (2025-04-06)
 
 
