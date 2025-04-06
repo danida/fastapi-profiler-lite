@@ -43,10 +43,17 @@ class Profiler:
         # Use the middleware instance directly instead of creating a new one
         self.app.add_middleware(BaseHTTPMiddleware, dispatch=self.middleware.dispatch)
 
-        # Store middleware in app state for extensions like SQLAlchemy integration
+        # Store middleware in app state for extensions
+        # This should be done in a way that doesn't interfere with other middlewares
+        # The app.state should always be a dataclass of starlette normally
+        # but we can use a simple object here just in case
         if not hasattr(self.app, "state"):
             self.app.state = type("AppState", (), {})()
         self.app.state.profiler_middleware = self.middleware
+
+        # Note: Database engines must be manually instrumented by user
+        # Instrumenting db hooks automatically is too erroneous,
+        # FastAPI is unopinionated about external States
 
         # Add the get_current_profiler function to app state for easy access
         self.app.state.get_current_profiler = get_current_profiler
@@ -137,6 +144,50 @@ class Profiler:
                 # Get endpoint stats from aggregated data
                 endpoint_stats = stats.get_endpoint_stats()
 
+                # TODO: move this juicer to rustcore and evaluate
+                # Prepare database statistics
+                db_stats = stats.db_stats
+                db_avg_time = (
+                    db_stats["avg_time"] * 1000 if db_stats["query_count"] > 0 else 0
+                )
+                db_max_time = (
+                    db_stats["max_time"] * 1000 if db_stats["max_time"] > 0 else 0
+                )
+                db_min_time = (
+                    db_stats["min_time"] * 1000
+                    if db_stats["min_time"] < float("inf")
+                    else 0
+                )
+
+                # Get engine-specific statistics
+                engine_stats = stats.get_engine_stats()
+
+                # Extract database queries from recent requests
+                # for the slowest queries tab
+                db_queries = []
+                for req in recent_requests:
+                    if "db_queries" in req and req["db_queries"]:
+                        for query in req["db_queries"]:
+                            db_queries.append(
+                                {
+                                    "endpoint": f"{req['method']} {req['path']}",
+                                    "statement": query["statement"],
+                                    "duration": query["duration"],
+                                    "timestamp": req["start_time"],
+                                    "metadata": query.get("metadata", {}),
+                                    "engine": query.get("metadata", {}).get(
+                                        "name",
+                                        query.get("metadata", {}).get(
+                                            "dialect", "Unknown"
+                                        ),
+                                    ),
+                                }
+                            )
+
+                # Sort by duration (slowest first) and take top 20
+                db_queries.sort(key=lambda q: q["duration"], reverse=True)
+                slowest_queries = db_queries[:20]
+
                 return {
                     "timestamp": time.time(),
                     "overview": {
@@ -160,6 +211,15 @@ class Profiler:
                     "requests": {
                         "recent": recent_requests,
                         "status_codes": stats.get_status_code_distribution(),
+                    },
+                    "database": {
+                        "total_time": db_stats["total_time"] * 1000,  # Convert to ms
+                        "avg_time": db_avg_time,
+                        "max_time": db_max_time,
+                        "min_time": db_min_time,
+                        "query_count": db_stats["query_count"],
+                        "engines": engine_stats,
+                        "slowest_queries": slowest_queries,
                     },
                 }
             except Exception as e:
@@ -195,6 +255,8 @@ class Profiler:
             return JSONResponse(
                 status_code=404, content={"detail": f"Profile {profile_id} not found"}
             )
+
+        # SQL formatting is done on the fly when tracking queries, enabling sqlparse
 
         # Include the router
         self.app.include_router(router, prefix=self.dashboard_path)

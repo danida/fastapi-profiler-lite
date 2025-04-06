@@ -60,8 +60,9 @@ class ProfilerMiddleware(BaseHTTPMiddleware):
             profiler.complete()
 
             try:
-                # Store minimal profile data without external calls to save memory
-                profile_dict = profiler.to_dict(include_external=False)
+                # Store profile data with database queries but
+                # without external calls to save memory
+                profile_dict = profiler.to_dict(include_external=True)
 
                 # Store profiling data (deque automatically handles the size limit)
                 self.profiles.append(profile_dict)

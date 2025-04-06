@@ -21,6 +21,7 @@ class RequestProfiler:
         "total_time",
         "status_code",
         "external_calls",
+        "db_queries",
         "_dict_cache",
     )
 
@@ -36,6 +37,7 @@ class RequestProfiler:
 
         # Performance data
         self.external_calls: List[tuple] = []
+        self.db_queries: List[Dict[str, Any]] = []
 
         # Cache for dictionary representation
         self._dict_cache = None
@@ -85,6 +87,14 @@ class RequestProfiler:
         else:
             result["external_call_count"] = len(self.external_calls)
 
+        # Add database query information
+        db_time = sum(query["duration"] for query in self.db_queries)
+        result["db_time"] = db_time
+        result["db_count"] = len(self.db_queries)
+
+        if include_external:
+            result["db_queries"] = self.db_queries
+
         # Cache the result if profiling is complete
         if self.total_time is not None:
             self._dict_cache = result
@@ -94,6 +104,35 @@ class RequestProfiler:
     def add_external_call(self, url: str, method: str, duration: float) -> None:
         """Add an external API call to the profile."""
         self.external_calls.append((url, method, duration))
+
+    def add_db_query(
+        self, duration: float, statement: str, metadata: dict = None
+    ) -> None:
+        """Add a database query to the profile."""
+        # Skip empty or None statements
+        if not statement:
+            return
+
+        # Create a copy of metadata to avoid modifying the original
+        metadata_copy = dict(metadata or {})
+
+        # Add timestamp for when the query was recorded
+        metadata_copy["timestamp"] = time.time()
+
+        # Truncate very long statements to avoid memory issues
+        original_length = len(statement)
+        if original_length > 1000:
+            statement = statement[:997] + "..."
+            metadata_copy["truncated"] = True
+            metadata_copy["original_length"] = original_length
+
+        # Normalize whitespace in the statement for better display
+        statement = " ".join(statement.split())
+
+        # Add query to the list
+        self.db_queries.append(
+            {"duration": duration, "statement": statement, "metadata": metadata_copy}
+        )
 
 
 def get_current_profiler() -> Optional[RequestProfiler]:
