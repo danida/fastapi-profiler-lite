@@ -1,3 +1,15 @@
+## [0.3.2](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.3.1...v0.3.2) (2025-04-06)
+
+
+### Continuous Integration
+
+* update release workflow to sync rust dependency version ([1eb62d0](https://github.com/al91liwo/fastapi-profiler-lite/commit/1eb62d0b6ce42409f7f2595906cd3313679cdff1))
+
+
+### Chores
+
+* update fastapi-profiler-rust dependency to >=0.3.1 ([9fa34e4](https://github.com/al91liwo/fastapi-profiler-lite/commit/9fa34e4cf45bc7a8cc498be1cec1d59b1017ac7b))
+
 ## [0.3.1](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.3.0...v0.3.1) (2025-04-06)
 
 
