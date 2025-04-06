@@ -166,14 +166,18 @@ jobs:
           git commit -m "chore(rustcore): bump rustcore version to $NEW_VERSION [skip ci]"
           git push
 
-      - name: Publish Rust core to PyPI
+      - name: Publish Rust core
         working-directory: fastapi_profiler/rustcore
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           pip install twine
-          twine upload \
-            --repository-url https://upload.pypi.org/legacy/ \
-            --username __token__ \
-            --password "$PYPI_TOKEN" \
-            ../../wheels/*.whl
+          echo "Uploading wheels with token: ${PYPI_TOKEN:0:4}***"
+          for wheel in ../../wheels/*.whl; do
+            twine upload \
+              --repository-url https://upload.pypi.org/legacy/ \
+              --username __token__ \
+              --password "$PYPI_TOKEN" \
+              --skip-existing \
+              "$wheel"
+          done
