@@ -66,11 +66,58 @@ That's it! Visit `/profiler` to see the performance dashboard.
 
 ## Technical Details
 
-- **Rust Core**: Statistics calculations are powered by a Rust extension for improved performance. Benchmarks comparing to NumPy will be published soon. Pre-built wheels are provided for all major platforms, but if you encounter any issues, please open a GitHub issue.
+- **Rust Core**: Statistics calculations are powered by a Rust extension using [PyO3](https://github.com/pyo3) for improved performance. Benchmarks comparing to NumPy will be published soon. Pre-built wheels are provided for all major platforms, but if you encounter any issues, please open a GitHub issue.
 
 - **UI Framework**: The dashboard uses [Tabler.io](https://tabler.io/), a premium and open-source admin dashboard template, providing a clean and modern interface.
 
 - **Database Instrumentation**: Track database queries with SQLAlchemy integration. Manually instrument your SQLAlchemy engines to see detailed query performance data.
+
+## Running Examples
+
+The repository includes several examples to demonstrate different features:
+
+```bash
+# Basic example with simple endpoints
+python example.py
+
+# Example with SQLAlchemy database instrumentation
+python examples/sqlalchemy_demo.py
+
+# Example with multiple database engines
+python examples/multi_db_demo.py
+
+# Real-time continuous monitoring demo
+python examples/realtime_demo.py
+
+# Stress test with high load
+python examples/stress_test.py
+```
+
+### Database Instrumentation Example
+
+To manually instrument database engines:
+
+```python
+from fastapi import FastAPI
+from sqlalchemy import create_engine
+from fastapi_profiler import Profiler
+from fastapi_profiler.instrumentations import SQLAlchemyInstrumentation
+
+app = FastAPI()
+
+# Create SQLAlchemy engines
+primary_db = create_engine("sqlite:///./primary.db")
+analytics_db = create_engine("sqlite:///./analytics.db")
+
+# Initialize profiler
+profiler = Profiler(app)
+
+# Manually instrument each database engine
+SQLAlchemyInstrumentation.instrument(primary_db)
+SQLAlchemyInstrumentation.instrument(analytics_db)
+```
+
+Visit `/profiler` to see the dashboard with database query performance data.
 
 ## Documentation
 
