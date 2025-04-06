@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fastapi-profiler-lite",
-    version="0.2.5",
+    version="0.2.21",
     description="A lightweight performance profiler for FastAPI applications",
     author="Alexander Lind",
     author_email="al91liwo@gmail.com",
@@ -26,7 +26,8 @@ setup(
         "starlette>=0.14.2",
         "jinja2>=3.1.2",
         "sqlparse>=0.4.0",
-        "sqlalchemy>=1.4.0"
+        "sqlalchemy>=1.4.0",
+        "fastapi-profiler-rust>=0.2.21"
     ],
     extras_require={
         "standard": ["uvicorn>=0.14.0"],

@@ -9,7 +9,106 @@ permissions:
   id-token: write
 
 jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      bumped_version: ${{ steps.maybe-bump-version.outputs.bumped_version }}
+      should_publish: ${{ steps.check-pypi.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Get current version
+        id: get-version
+        shell: bash
+        run: |
+          CURRENT_VERSION=$(grep '^version = "' fastapi_profiler/rustcore/Cargo.toml | cut -d '"' -f2)
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Check if version exists on PyPI
+        id: check-pypi
+        shell: bash
+        run: |
+          pip install packaging requests
+          
+          PACKAGE_NAME="fastapi-profiler-rust"
+          CURRENT_VERSION="${{ steps.get-version.outputs.version }}"
+          
+          echo "Checking if $PACKAGE_NAME==$CURRENT_VERSION exists on PyPI..."
+          
+          # Check if the version exists on PyPI
+          RESPONSE=$(python -c "
+          import requests
+          import json
+          from packaging import version
+          
+          package = '$PACKAGE_NAME'
+          current_version = '$CURRENT_VERSION'
+          
+          try:
+              response = requests.get(f'https://pypi.org/pypi/{package}/json')
+              response.raise_for_status()
+              data = response.json()
+              versions = list(data['releases'].keys())
+              
+              exists = current_version in versions
+              print(json.dumps({'exists': exists}))
+          except Exception as e:
+              print(json.dumps({'exists': False, 'error': str(e)}))
+          ")
+          
+          EXISTS=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['exists'])")
+          
+          if [ "$EXISTS" = "True" ]; then
+            echo "Version $CURRENT_VERSION already exists on PyPI, will not publish"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          else
+            echo "Version $CURRENT_VERSION does not exist on PyPI, will publish"
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Maybe bump version
+        id: maybe-bump-version
+        shell: bash
+        run: |
+          CURRENT_VERSION=${{ steps.get-version.outputs.version }}
+          SHOULD_PUBLISH=${{ steps.check-pypi.outputs.should_publish }}
+          
+          if [ "$SHOULD_PUBLISH" = "true" ]; then
+            echo "Publishing current version: $CURRENT_VERSION"
+            echo "bumped_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            # Calculate next version
+            MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+            MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+            PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+            NEXT_PATCH=$((PATCH + 1))
+            NEXT_VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
+            
+            echo "Current version already on PyPI, bumping to: $NEXT_VERSION"
+            echo "bumped_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+            
+            # Apply version bump
+            python scripts/sync_versions.py $NEXT_VERSION
+            
+            # Commit changes
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add .
+            git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
+            git push
+          fi
+
   build-rust:
+    needs: [determine-version]
+    # Only proceed if we should publish or if workflow was manually triggered
+    if: ${{ needs.determine-version.outputs.should_publish == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -26,6 +125,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: main  # Ensure we have the latest changes from version bump
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -43,14 +144,15 @@ jobs:
       - name: Install maturin
         run: pip install maturin
 
-      - name: Clean any cached builds
+      - name: Verify version
         shell: bash
         run: |
-          if [ -d "fastapi_profiler/rustcore/target" ]; then
-            rm -rf fastapi_profiler/rustcore/target
+          CARGO_VERSION=$(grep '^version = "' fastapi_profiler/rustcore/Cargo.toml | cut -d '"' -f2)
+          echo "Building Rust core version: $CARGO_VERSION"
+          if [ "$CARGO_VERSION" != "${{ needs.determine-version.outputs.bumped_version }}" ]; then
+            echo "Error: Version mismatch between job (${{ needs.determine-version.outputs.bumped_version }}) and Cargo.toml ($CARGO_VERSION)"
+            exit 1
           fi
-
-          find . -name "*.so" -exec rm -f {} +
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
@@ -68,16 +170,18 @@ jobs:
           retention-days: 7
 
   test:
-    needs: build-rust
+    needs: [determine-version, build-rust]
+    # Only proceed if we should publish or if workflow was manually triggered
+    if: ${{ needs.determine-version.outputs.should_publish == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
-
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: main  # Ensure we have the latest changes
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -93,31 +197,53 @@ jobs:
           path: ./wheels
           merge-multiple: true
 
+      - name: Install local wheel
+        shell: bash
+        run: |
+          # Find the appropriate wheel for this platform and Python version
+          PY_VERSION=$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')
+
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            WHEEL_PATH=$(find ./wheels -name "*-cp${PY_VERSION}-*.whl" | findstr $(echo $PROCESSOR_ARCHITECTURE | tr '[:upper:]' '[:lower:]') || echo "")
+          else
+            WHEEL_PATH=$(find ./wheels -name "*-cp${PY_VERSION}-*.whl" | grep -i $(uname -m) || echo "")
+          fi
+
+          if [ -n "$WHEEL_PATH" ]; then
+            echo "Installing local wheel: $WHEEL_PATH"
+            pip install --force-reinstall "$WHEEL_PATH"
+          else
+            echo "No matching wheel found, falling back to PyPI"
+            BUMPED_VERSION="${{ needs.determine-version.outputs.bumped_version }}"
+            pip install --no-cache-dir fastapi-profiler-rust==${BUMPED_VERSION}
+          fi
+
+          # Verify installed version
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            pip list | findstr fastapi-profiler-rust
+          else
+            pip list | grep fastapi-profiler-rust
+          fi
+
       - name: Run tests
         run: |
           poetry config virtualenvs.create false
           poetry install --with dev --extras all
-          # Install the built wheel
-          pip install --find-links=./wheels --force-reinstall --no-cache-dir fastapi-profiler-rust
           poetry run pytest
 
   publish-to-pypi:
-    needs: [build-rust, test]
-    if: github.ref == 'refs/heads/main'
+    needs: [determine-version, build-rust, test]
+    if: ${{ needs.determine-version.outputs.should_publish == 'true' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: main  # Ensure we have the latest changes
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
-      - name: Install tools
-        run: |
-          pip install twine toml
-          pip install --upgrade pip setuptools wheel
 
       - name: Download all wheels
         uses: actions/download-artifact@v4
@@ -130,51 +256,32 @@ jobs:
           echo "✅ Downloaded wheel files:"
           find ./wheels -name "*.whl"
 
-      - name: Bump version
-        id: bump-version
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: ./wheels
+          merge-multiple: true
+
+      - name: Create dist directory
         run: |
-          CURRENT_VERSION=$(grep '^version = "' fastapi_profiler/rustcore/Cargo.toml | cut -d '"' -f2)
-          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-          echo "🔁 Bumping version to $NEW_VERSION"
-
-          sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" fastapi_profiler/rustcore/Cargo.toml
-          sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" fastapi_profiler/rustcore/pyproject.toml
-          sed -i "s/version=\"$CURRENT_VERSION\"/version=\"$NEW_VERSION\"/" fastapi_profiler/rustcore/setup.py
-
-          INIT_FILE=fastapi_profiler/rustcore/__init__.py
-          if [ -f "$INIT_FILE" ]; then
-            sed -i "s/__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" $INIT_FILE
-          else
-            echo "__version__ = \"$NEW_VERSION\"" > $INIT_FILE
-          fi
-
-          sed -i "s/fastapi-profiler-rust = \">=.*\"/fastapi-profiler-rust = \">=$NEW_VERSION\"/" pyproject.toml
-
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add fastapi_profiler/rustcore/Cargo.toml \
-                  fastapi_profiler/rustcore/pyproject.toml \
-                  fastapi_profiler/rustcore/setup.py \
-                  fastapi_profiler/rustcore/__init__.py \
-                  pyproject.toml
-          git commit -m "chore(rustcore): bump rustcore version to $NEW_VERSION [skip ci]"
-          git push
+          mkdir -p dist
+          cp ./wheels/*.whl dist/
+          echo "Contents of dist directory:"
+          ls -la dist/
 
       - name: Publish Rust core
         working-directory: fastapi_profiler/rustcore
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
+          # Verify token availability (debug safely)
+          echo "Token starts with: ${PYPI_TOKEN:0:6}"
           pip install twine
-          echo "Uploading wheels with token: ${PYPI_TOKEN:0:4}***"
-          for wheel in ../../wheels/*.whl; do
+          # Upload wheels
+          for wheel in ../../dist/*.whl; do
             twine upload \
+              --verbose \
               --repository-url https://upload.pypi.org/legacy/ \
               --username __token__ \
               --password "$PYPI_TOKEN" \

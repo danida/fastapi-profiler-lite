@@ -841,4 +841,4 @@ webserver = ["uvicorn"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.8,<4.0"
-content-hash = "d5ab5927abb2ed85223fcd85f70787a8882cacba72dd3538f05a1b3f1ddd9d27"
+content-hash = "a0875eddb07b20889952856cb61fa8b96743c33cbca41a87f94375bd55d28628"
