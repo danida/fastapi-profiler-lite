@@ -93,19 +93,12 @@ jobs:
           path: ./wheels
           merge-multiple: true
 
-      - name: Clean any cached builds
-        run: |
-          rm -rf fastapi_profiler/rustcore/target
-          find . -name "*.so" -delete || true
-
-      - name: Install built wheel
-        run: |
-          pip install --find-links=./wheels fastapi-profiler-rust
-
       - name: Run tests
         run: |
           poetry config virtualenvs.create false
           poetry install --with dev --extras all
+          # Install the built wheel
+          pip install --find-links=./wheels --force-reinstall --no-cache-dir fastapi-profiler-rust
           poetry run pytest
 
   publish-to-pypi:
