@@ -61,6 +61,7 @@ That's it! Visit `/profiler` to see the performance dashboard.
 - **Endpoint analysis** - Identify your slowest and most used endpoints
 - **Request filtering** - Search and sort through captured requests
 - **Visual metrics** - Charts for response times and request distribution
+- **Database monitoring** - Tracking of SQLAlchemy queries
 - **Minimal overhead** - Designed to have low performance impact
 
 ## Technical Details
@@ -68,6 +69,8 @@ That's it! Visit `/profiler` to see the performance dashboard.
 - **Rust Core**: Statistics calculations are powered by a Rust extension for improved performance. Benchmarks comparing to NumPy will be published soon. Pre-built wheels are provided for all major platforms, but if you encounter any issues, please open a GitHub issue.
 
 - **UI Framework**: The dashboard uses [Tabler.io](https://tabler.io/), a premium and open-source admin dashboard template, providing a clean and modern interface.
+
+- **Database Instrumentation**: Track database queries with SQLAlchemy integration. Manually instrument your SQLAlchemy engines to see detailed query performance data.
 
 ## Documentation
 

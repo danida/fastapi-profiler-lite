@@ -81,6 +81,36 @@ Profiler(
 )
 ```
 
+## Database Instrumentation
+
+FastAPI Profiler requires manual instrumentation of SQLAlchemy to track database queries. Auto-instrumentation is not supported:
+
+```python
+from sqlalchemy import create_engine
+from fastapi import FastAPI
+from fastapi_profiler import Profiler
+from fastapi_profiler.instrumentations import SQLAlchemyInstrumentation
+
+app = FastAPI()
+
+# Create SQLAlchemy engine
+engine = create_engine("sqlite:///./test.db")
+
+# Initialize profiler
+Profiler(app)
+
+# Manually instrument the database engine, this step is required
+SQLAlchemyInstrumentation.instrument(engine)
+```
+
+For multiple database engines, you must instrument each one separately:
+
+```python
+# Instrument multiple engines, all engines must be manually instrumented
+SQLAlchemyInstrumentation.instrument(primary_engine)
+SQLAlchemyInstrumentation.instrument(analytics_engine)
+```
+
 ## Next Steps
 
 Once configured, you can access the dashboard at the specified path (default: `/profiler`) to view your application's performance metrics.
