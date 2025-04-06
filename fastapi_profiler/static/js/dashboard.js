@@ -11,7 +11,7 @@ let requestsByMethodChart;
 let endpointDistributionChart;
 let statusCodeChart;
 
-// Simple formatter for time display
+// Simple formatter for time display with two decimal places
 const formatTime = (ms) => ms.toFixed(2);
 
 // Format relative time for better readability
@@ -38,9 +38,19 @@ function setupTablerTabs() {
             // We don't need to manually show/hide content as Bootstrap handles it
             
             // Update charts when tabs are shown
-            if (e.target.getAttribute('href') === '#tab-overview') {
+            const targetTab = e.target.getAttribute('href');
+            
+            // Main tabs
+            if (targetTab === '#tab-http') {
                 updateCharts();
-            } else if (e.target.getAttribute('href') === '#tab-endpoints') {
+            } else if (targetTab === '#tab-database') {
+                updateDatabaseSection();
+            }
+            
+            // HTTP sub-tabs
+            if (targetTab === '#tab-http-overview') {
+                updateCharts();
+            } else if (targetTab === '#tab-http-endpoints') {
                 updateEndpointDistributionChart();
             }
         });
@@ -118,12 +128,1005 @@ function updateDashboard() {
         return;
     }
 
-    // Update all dashboard sections
+    // Update HTTP profiler sections
     updateStats();
     updateSlowestEndpointsTable();
     updateEndpointsTable();
     updateRequestsTable();
     updateCharts();
+    
+    // Update Database profiler section
+    updateDatabaseSection();
+}
+
+// Update database section
+function updateDatabaseSection() {
+    if (!dashboardData.database) {
+        return;
+    }
+    
+    // Update database stats
+    if (dashboardData.database) {
+        const dbStats = dashboardData.database;
+        document.getElementById('stat-db-queries').textContent = dbStats.query_count;
+        document.getElementById('stat-db-avg-time').textContent = dbStats.avg_time.toFixed(2) + ' ms';
+        document.getElementById('stat-db-max-time').textContent = dbStats.max_time.toFixed(2) + ' ms';
+        document.getElementById('stat-db-total-time').textContent = dbStats.total_time.toFixed(2) + ' ms';
+    }
+    
+    // Update tables and charts without engine filter
+    updateDbQueriesTable();
+    updateDbSlowestQueriesTable();
+    updateDbTimeChart();
+}
+
+// Update engine filter dropdown
+function updateEngineFilterDropdown() {
+    const dropdown = document.getElementById('db-engine-filter');
+    if (!dropdown) return;
+    
+    // Save current selection
+    const currentSelection = dropdown.value;
+    
+    // Get all available engines
+    const engines = dashboardData.database.engines || [];
+    
+    // Get unique engine names from recent queries
+    const engineNames = new Set();
+    engineNames.add(''); // Add empty option for "All Engines"
+    
+    // Add engines from the engine stats
+    engines.forEach(engine => {
+        engineNames.add(engine.name);
+    });
+    
+    // Add engines from recent queries that might not be in the stats yet
+    if (dashboardData.requests && dashboardData.requests.recent) {
+        dashboardData.requests.recent.forEach(req => {
+            if (req.db_queries) {
+                req.db_queries.forEach(query => {
+                    if (query.metadata) {
+                        const engineName = query.metadata.name || query.metadata.dialect;
+                        if (engineName) engineNames.add(engineName);
+                    }
+                });
+            }
+        });
+    }
+    
+    // Clear existing options except the first one
+    while (dropdown.options.length > 1) {
+        dropdown.remove(1);
+    }
+    
+    // Add engine options
+    Array.from(engineNames)
+        .filter(name => name !== '') // Skip the empty option as it's already there
+        .sort()
+        .forEach(engineName => {
+            const option = document.createElement('option');
+            option.value = engineName;
+            option.textContent = engineName;
+            dropdown.appendChild(option);
+        });
+    
+    // Restore selection if it still exists
+    if (Array.from(engineNames).includes(currentSelection)) {
+        dropdown.value = currentSelection;
+    }
+}
+
+// Update database engines table and tabs
+function updateDbEnginesTable() {
+    if (!dashboardData.database || !dashboardData.database.engines) {
+        return;
+    }
+    
+    const engines = dashboardData.database.engines;
+    const tableBody = document.getElementById('db-engines-table').querySelector('tbody');
+    tableBody.innerHTML = '';
+    
+    if (engines.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">No database engines detected</td></tr>`;
+        return;
+    }
+    
+    // Update the engines table
+    engines.forEach(engine => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="font-medium text-gray-900">${engine.name}</td>
+            <td>${engine.dialect}</td>
+            <td class="text-gray-700">${engine.query_count}</td>
+            <td class="text-indigo-600 font-medium">${formatTime(engine.avg_time)} ms</td>
+            <td class="text-red-600">${formatTime(engine.max_time)} ms</td>
+            <td class="text-cyan-600">${formatTime(engine.total_time)} ms</td>
+        `;
+        tableBody.appendChild(row);
+    });
+    
+    // Update engine tabs
+    updateEngineTabsAndContent(engines);
+}
+
+// Update engine tabs and their content
+function updateEngineTabsAndContent(engines) {
+    const tabsContainer = document.getElementById('db-engine-tabs');
+    const tabContent = tabsContainer.closest('.tab-content');
+    
+    // Get existing engine tabs
+    const existingTabs = Array.from(tabsContainer.querySelectorAll('li.nav-item:not(:first-child)'));
+    const existingTabIds = existingTabs.map(tab => tab.querySelector('a').getAttribute('href').substring(1));
+    
+    // Get current engine names
+    const engineNames = engines.map(engine => engine.name);
+    
+    // Remove tabs for engines that no longer exist
+    existingTabs.forEach(tab => {
+        const tabLink = tab.querySelector('a');
+        const engineName = tabLink.textContent;
+        
+        if (!engineNames.includes(engineName)) {
+            // Remove tab
+            tab.remove();
+            
+            // Remove corresponding content
+            const contentId = tabLink.getAttribute('href').substring(1);
+            const content = document.getElementById(contentId);
+            if (content) {
+                content.remove();
+            }
+        }
+    });
+    
+    // Add tabs for new engines
+    engines.forEach(engine => {
+        const tabId = `tab-engine-${engine.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`;
+        
+        // Skip if tab already exists
+        if (existingTabIds.includes(tabId)) {
+            return;
+        }
+        
+        // Create new tab
+        const tab = document.createElement('li');
+        tab.className = 'nav-item';
+        tab.innerHTML = `<a href="#${tabId}" class="nav-link" data-bs-toggle="tab">${engine.name}</a>`;
+        
+        // Add click handler to filter queries when tab is clicked
+        tab.querySelector('a').addEventListener('click', () => {
+            // Update the engine filter dropdown to match this engine
+            const filterDropdown = document.getElementById('db-engine-filter');
+            if (filterDropdown) {
+                filterDropdown.value = engine.name;
+                // Trigger the change event to update the queries table
+                const event = new Event('change');
+                filterDropdown.dispatchEvent(event);
+            }
+        });
+        
+        tabsContainer.appendChild(tab);
+        
+        // Create tab content
+        const content = document.createElement('div');
+        content.id = tabId;
+        content.className = 'tab-pane';
+        content.innerHTML = `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">${engine.name} (${engine.dialect})</h3>
+                    <div class="card-subtitle text-muted mt-1">${engine.url}</div>
+                </div>
+                <div class="card-body">
+                    <div class="row row-deck row-cards mb-3">
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center">
+                                        <div class="subheader">Queries</div>
+                                    </div>
+                                    <div class="h1 mb-0 text-blue">${engine.query_count}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center">
+                                        <div class="subheader">Avg Time</div>
+                                    </div>
+                                    <div class="h1 mb-0 text-purple">${formatTime(engine.avg_time)} ms</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center">
+                                        <div class="subheader">Max Time</div>
+                                    </div>
+                                    <div class="h1 mb-0 text-orange">${formatTime(engine.max_time)} ms</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center">
+                                        <div class="subheader">Total Time</div>
+                                    </div>
+                                    <div class="h1 mb-0 text-cyan">${formatTime(engine.total_time)} ms</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-vcenter card-table engine-queries-table" data-engine="${engine.name}">
+                            <thead>
+                                <tr>
+                                    <th>Endpoint</th>
+                                    <th>Query</th>
+                                    <th>Time (ms)</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="4" class="text-center">Loading engine-specific queries...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add to tab content container
+        tabContent.appendChild(content);
+    });
+    
+    // Update engine-specific query tables
+    updateEngineQueryTables(engines);
+}
+
+// Update slowest database queries table
+function updateDbSlowestQueriesTable() {
+    const tableBody = document.getElementById('db-slowest-queries-table').querySelector('tbody');
+    tableBody.innerHTML = '';
+    
+    // Use pre-processed slowest queries from the backend if available
+    let allQueries = dashboardData.database?.slowest_queries || [];
+    
+    // If no pre-processed queries, fall back to extracting from recent requests
+    if (allQueries.length === 0) {
+        // Get recent requests with database queries
+        const recentRequests = dashboardData.requests.recent || [];
+        const requestsWithQueries = recentRequests.filter(req => req.db_queries && req.db_queries.length > 0);
+        
+        if (requestsWithQueries.length === 0) {
+            // Check if we have any database stats at all
+            if (dashboardData.database && dashboardData.database.query_count > 0) {
+                tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">
+                    Database queries exist (${dashboardData.database.query_count} total) but detailed query data is not available in recent requests.
+                    Try making more requests to see query details.
+                </td></tr>`;
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">
+                    No database queries recorded. Make sure your database is properly instrumented.
+                    <br><br>
+                    <strong>Example:</strong><br>
+                    <code>app.state.sqlalchemy_engine = engine</code><br>
+                    <code>Profiler(app, instrument_db=True)</code>
+                </td></tr>`;
+            }
+            return;
+        }
+        
+        // Flatten the queries from all requests
+        requestsWithQueries.forEach(req => {
+            if (req.db_queries) {
+                req.db_queries.forEach(query => {
+                    // Get engine name from metadata if available
+                    let engineName = 'Unknown';
+                    if (query.metadata) {
+                        engineName = query.metadata.name || query.metadata.dialect || 'Unknown';
+                    }
+                    
+                    allQueries.push({
+                        endpoint: `${req.method} ${req.path}`,
+                        statement: query.statement,
+                        duration: query.duration,
+                        timestamp: req.start_time,
+                        metadata: query.metadata || {},
+                        engine: engineName
+                    });
+                });
+            }
+        });
+        
+        // Sort by duration (slowest first)
+        allQueries.sort((a, b) => b.duration - a.duration);
+    }
+    
+    // Take only the slowest 20 queries
+    allQueries = allQueries.slice(0, 20);
+    
+    // Render table rows
+    allQueries.forEach(query => {
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.classList.add('hover-highlight');
+        
+        // Truncate very long queries for display
+        let displayStatement = query.statement;
+        if (displayStatement.length > 100) {
+            displayStatement = displayStatement.substring(0, 97) + '...';
+        }
+        
+        // Detect database type
+        const dbType = detectDatabaseType(query.statement);
+        
+        // Get engine name
+        const engineName = query.engine || dbType;
+        
+        // Get query type
+        const queryType = query.metadata?.query_type || detectQueryType(query.statement);
+        const queryTypeBadge = getQueryTypeBadge(queryType);
+        
+        row.innerHTML = `
+            <td class="text-gray-700">${query.endpoint}</td>
+            <td class="font-mono text-xs" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <div class="d-flex align-items-center">
+                    <span class="badge ${queryTypeBadge.color} me-2" style="font-weight: 600; min-width: 70px; text-align: center; flex-shrink: 0;">${queryTypeBadge.label}</span>
+                    <i class="ti ti-click me-1 text-primary" style="font-size: 14px; flex-shrink: 0;"></i>
+                    <span class="text-dark" style="font-weight: 500; overflow: hidden; text-overflow: ellipsis;">${displayStatement}</span>
+                </div>
+            </td>
+            <td class="text-indigo-600 font-medium">${(query.duration * 1000).toFixed(2)} ms</td>
+            <td class="text-gray-500">${formatTimeAgo(query.timestamp)}</td>
+            <td><span class="badge bg-azure text-white" style="font-weight: 500;">${engineName}</span></td>
+        `;
+        
+        // Add click handler to show full query details
+        row.addEventListener('click', () => {
+            showSqlDetails(query);
+        });
+        
+        tableBody.appendChild(row);
+    });
+}
+
+// Update engine-specific query tables
+function updateEngineQueryTables(engines) {
+    if (!dashboardData.requests || !dashboardData.requests.recent) {
+        return;
+    }
+    
+    // Get recent requests with database queries
+    const recentRequests = dashboardData.requests.recent || [];
+    const requestsWithQueries = recentRequests.filter(req => req.db_queries && req.db_queries.length > 0);
+    
+    if (requestsWithQueries.length === 0) {
+        return;
+    }
+    
+    // Process each engine
+    engines.forEach(engine => {
+        const engineName = engine.name;
+        const tableSelector = `.engine-queries-table[data-engine="${engineName}"]`;
+        const table = document.querySelector(tableSelector);
+        
+        if (!table) return;
+        
+        const tableBody = table.querySelector('tbody');
+        tableBody.innerHTML = '';
+        
+        // Flatten the queries from all requests for this engine
+        let engineQueries = [];
+        requestsWithQueries.forEach(req => {
+            if (!req.db_queries) return;
+            
+            req.db_queries.forEach(query => {
+                if (query.metadata && 
+                    ((query.metadata.name === engineName) || 
+                     (query.metadata.dialect === engineName))) {
+                    engineQueries.push({
+                        endpoint: `${req.method} ${req.path}`,
+                        statement: query.statement,
+                        duration: query.duration,
+                        timestamp: req.start_time,
+                        metadata: query.metadata || {},
+                        query_type: query.metadata?.query_type || detectQueryType(query.statement)
+                    });
+                }
+            });
+        });
+        
+        // Sort by timestamp (most recent first)
+        engineQueries.sort((a, b) => b.timestamp - a.timestamp);
+        
+        // Take only the most recent 10 queries
+        engineQueries = engineQueries.slice(0, 10);
+        
+        if (engineQueries.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">No queries found for this engine</td></tr>`;
+            return;
+        }
+        
+        // Render table rows
+        engineQueries.forEach(query => {
+            const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.classList.add('hover-highlight');
+            
+            // Truncate very long queries for display
+            let displayStatement = query.statement;
+            if (displayStatement.length > 100) {
+                displayStatement = displayStatement.substring(0, 97) + '...';
+            }
+            
+            // Get query type badge color
+            const queryTypeBadge = getQueryTypeBadge(query.query_type);
+            
+            row.innerHTML = `
+                <td class="text-gray-700">${query.endpoint}</td>
+                <td class="font-mono text-xs" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <div class="d-flex align-items-center">
+                        <span class="badge ${queryTypeBadge.color} me-2" style="font-weight: 600; min-width: 70px; text-align: center; flex-shrink: 0;">${queryTypeBadge.label}</span>
+                        <i class="ti ti-click me-1 text-primary" style="font-size: 14px; flex-shrink: 0;"></i>
+                        <span class="text-dark" style="font-weight: 500; overflow: hidden; text-overflow: ellipsis;">${displayStatement}</span>
+                    </div>
+                </td>
+                <td class="text-indigo-600 font-medium">${formatTime(query.duration * 1000)} ms</td>
+                <td class="text-gray-500">${formatTimeAgo(query.timestamp)}</td>
+            `;
+            
+            // Add click handler to show full query details
+            row.addEventListener('click', () => {
+                showSqlDetails(query);
+            });
+            
+            tableBody.appendChild(row);
+        });
+    });
+}
+
+// Helper function to detect database type from SQL query
+function detectDatabaseType(sql) {
+    sql = sql.toLowerCase();
+    
+    // PostgreSQL specific syntax
+    if (sql.includes('::') || 
+        sql.includes('returning ') || 
+        sql.includes('ilike ') || 
+        sql.includes('now()') ||
+        sql.includes('uuid_generate_v4()')) {
+        return 'PostgreSQL';
+    }
+    
+    // MySQL specific syntax
+    if (sql.includes('limit ?, ?') || 
+        sql.includes('on duplicate key') || 
+        sql.includes('auto_increment') ||
+        sql.includes('from_unixtime(')) {
+        return 'MySQL';
+    }
+    
+    // SQLite specific syntax
+    if (sql.includes('sqlite_master') || 
+        sql.includes('pragma ') || 
+        sql.includes('rowid') ||
+        sql.includes('ifnull(')) {
+        return 'SQLite';
+    }
+    
+    // SQL Server specific syntax
+    if (sql.includes('top (') || 
+        sql.includes('isnull(') || 
+        sql.includes('getdate()') ||
+        sql.includes('nolock')) {
+        return 'SQL Server';
+    }
+    
+    // Oracle specific syntax
+    if (sql.includes('dual') || 
+        sql.includes('sysdate') || 
+        sql.includes('rownum') ||
+        sql.includes('nvl(')) {
+        return 'Oracle';
+    }
+    
+    // Default to generic SQL
+    return 'SQL';
+}
+
+// Helper function to detect query type from SQL
+function detectQueryType(sql) {
+    if (!sql) return 'UNKNOWN';
+    
+    sql = sql.trim().toLowerCase();
+    
+    if (sql.startsWith('select')) return 'SELECT';
+    if (sql.startsWith('insert')) return 'INSERT';
+    if (sql.startsWith('update')) return 'UPDATE';
+    if (sql.startsWith('delete')) return 'DELETE';
+    if (sql.startsWith('create')) return 'CREATE';
+    if (sql.startsWith('alter')) return 'ALTER';
+    if (sql.startsWith('drop')) return 'DROP';
+    if (sql.startsWith('with')) return 'WITH';
+    if (sql.startsWith('begin')) return 'BEGIN';
+    if (sql.startsWith('commit')) return 'COMMIT';
+    if (sql.startsWith('rollback')) return 'ROLLBACK';
+    
+    return 'UNKNOWN';
+}
+
+// Helper function to get badge for query type
+function getQueryTypeBadge(queryType) {
+    if (!queryType) return { label: 'SQL', color: 'bg-secondary text-white' };
+    
+    const type = queryType.toUpperCase();
+    
+    switch (type) {
+        case 'SELECT':
+            return { label: 'SELECT', color: 'bg-primary text-white' };
+        case 'INSERT':
+            return { label: 'INSERT', color: 'bg-success text-white' };
+        case 'UPDATE':
+            return { label: 'UPDATE', color: 'bg-warning text-dark' }; // Yellow needs dark text
+        case 'DELETE':
+            return { label: 'DELETE', color: 'bg-danger text-white' };
+        case 'CREATE':
+            return { label: 'CREATE', color: 'bg-indigo text-white' };
+        case 'ALTER':
+            return { label: 'ALTER', color: 'bg-purple text-white' };
+        case 'DROP':
+            return { label: 'DROP', color: 'bg-pink text-white' };
+        case 'WITH':
+        case 'WITH-SELECT':
+        case 'WITH-INSERT':
+        case 'WITH-UPDATE':
+        case 'WITH-DELETE':
+            return { label: 'CTE', color: 'bg-info text-dark' }; // Cyan needs dark text
+        case 'BEGIN':
+        case 'COMMIT':
+        case 'ROLLBACK':
+            return { label: type, color: 'bg-teal text-white' };
+        default:
+            return { label: 'SQL', color: 'bg-secondary text-white' };
+    }
+}
+
+// Format SQL query for better readability
+function formatSqlQuery(sql) {
+    // This function is kept for compatibility
+    // The actual formatting is done server-side with sqlparse
+    return sql || '';
+}
+
+// Add syntax highlighting to SQL in the modal
+function applySqlSyntaxHighlighting(codeElement) {
+    if (!codeElement || !codeElement.textContent) return;
+    
+    const sql = codeElement.textContent;
+    
+    // Simple regex-based syntax highlighting
+    let highlighted = sql
+        // Keywords
+        .replace(/\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|AND|OR|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|ON|AS|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INTO|VALUES|SET|CREATE|ALTER|DROP|TABLE|INDEX|VIEW|TRIGGER|PROCEDURE|FUNCTION|DATABASE|SCHEMA|GRANT|REVOKE|COMMIT|ROLLBACK|BEGIN|TRANSACTION|WITH|CASE|WHEN|THEN|ELSE|END)\b/gi, 
+            '<span style="color: #0550ae; font-weight: bold;">$1</span>')
+        // Functions
+        .replace(/\b(COUNT|SUM|AVG|MIN|MAX|COALESCE|NULLIF|CAST|CONVERT|SUBSTRING|CONCAT|TRIM|UPPER|LOWER|DATE|EXTRACT|TO_CHAR|TO_DATE|CURRENT_DATE|CURRENT_TIME|NOW|INTERVAL)\b/gi,
+            '<span style="color: #9333ea;">$1</span>')
+        // Numbers
+        .replace(/\b(\d+(\.\d+)?)\b/g, 
+            '<span style="color: #0891b2;">$1</span>')
+        // Strings
+        .replace(/'([^']*)'/g, 
+            '<span style="color: #16a34a;">\'$1\'</span>')
+        // Comments
+        .replace(/--(.*)$/gm, 
+            '<span style="color: #6b7280; font-style: italic;">--$1</span>');
+    
+    // Set the highlighted HTML
+    codeElement.innerHTML = highlighted;
+}
+
+// Show SQL query details in a modal
+function showSqlDetails(query) {
+    // Get database type and engine name
+    const dbType = detectDatabaseType(query.statement);
+    const engineName = query.engine || dbType;
+    
+    // Create modal content with loading indicator
+    const modal = document.createElement('div');
+    modal.className = 'modal modal-blur fade show';
+    modal.style.display = 'block';
+    modal.setAttribute('role', 'dialog');
+    
+    // Create the modal HTML structure first
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">SQL Query Details (${engineName})</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span><strong>Endpoint:</strong> ${query.endpoint}</span>
+                            <span><strong>Duration:</strong> ${(query.duration * 1000).toFixed(2)} ms</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span><strong>Time:</strong> ${new Date(query.timestamp * 1000).toLocaleString()}</span>
+                            <span><strong>Database:</strong> ${dbType}</span>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h3 class="card-title">SQL Query</h3>
+                            <button class="btn btn-sm btn-outline-primary copy-btn">
+                                Copy SQL
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <pre id="sql-query-content" class="m-0 p-3 bg-light" style="max-height: 400px; overflow: auto; white-space: pre-wrap;"><code class="language-sql">Loading SQL...</code></pre>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add to DOM first
+    document.body.appendChild(modal);
+    
+    // Get the code element for SQL display
+    const codeElement = modal.querySelector('pre code');
+    
+    // Use pre-formatted SQL if available, otherwise use the original statement
+    if (query.metadata && query.metadata.formatted_sql) {
+        codeElement.textContent = query.metadata.formatted_sql;
+        applySqlSyntaxHighlighting(codeElement);
+    } else {
+        // Fallback to client-side formatting
+        codeElement.textContent = formatSqlQuery(query.statement);
+        applySqlSyntaxHighlighting(codeElement);
+    }
+    
+    document.body.appendChild(modal);
+    
+    // Add event listener to close button
+    modal.querySelectorAll('.btn-close, .btn[data-bs-dismiss="modal"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            modal.remove();
+        });
+    });
+    
+    // Close when clicking outside
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+    
+    // Add copy functionality
+    const copyBtn = modal.querySelector('.copy-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            // Get the SQL text directly
+            const sqlText = query.statement;
+            
+            // Use the modern clipboard API
+            navigator.clipboard.writeText(sqlText)
+                .then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    copyBtn.classList.remove('btn-outline-primary');
+                    copyBtn.classList.add('btn-success');
+                    
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copy SQL';
+                        copyBtn.classList.remove('btn-success');
+                        copyBtn.classList.add('btn-outline-primary');
+                    }, 2000);
+                })
+                .catch(err => {
+                    // Fallback to the older method if clipboard API fails
+                    try {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = sqlText;
+                        textarea.setAttribute('readonly', '');
+                        textarea.style.position = 'absolute';
+                        textarea.style.left = '-9999px';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        
+                        copyBtn.textContent = 'Copied!';
+                        copyBtn.classList.remove('btn-outline-primary');
+                        copyBtn.classList.add('btn-success');
+                        
+                        setTimeout(() => {
+                            copyBtn.textContent = 'Copy SQL';
+                            copyBtn.classList.remove('btn-success');
+                            copyBtn.classList.add('btn-outline-primary');
+                        }, 2000);
+                    } catch (e) {
+                        copyBtn.textContent = 'Failed to copy';
+                        console.error('Could not copy text: ', e);
+                        setTimeout(() => {
+                            copyBtn.textContent = 'Copy SQL';
+                        }, 2000);
+                    }
+                });
+        });
+    }
+}
+
+// Update database queries table
+function updateDbQueriesTable() {
+    const tableBody = document.getElementById('db-queries-table').querySelector('tbody');
+    tableBody.innerHTML = '';
+    
+    // Get recent requests with database queries
+    const recentRequests = dashboardData.requests.recent || [];
+    const requestsWithQueries = recentRequests.filter(req => req.db_queries && req.db_queries.length > 0);
+    
+    if (requestsWithQueries.length === 0) {
+        // Check if we have any database stats at all
+        if (dashboardData.database && dashboardData.database.query_count > 0) {
+            tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">
+                Database queries exist (${dashboardData.database.query_count} total) but detailed query data is not available in recent requests.
+                Try making more requests to see query details.
+            </td></tr>`;
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">
+                No database queries recorded. Make sure your database is properly instrumented.
+                <br><br>
+                <strong>Example:</strong><br>
+                <code>app.state.sqlalchemy_engine = engine</code><br>
+                <code>Profiler(app, instrument_db=True)</code>
+            </td></tr>`;
+        }
+        return;
+    }
+    
+    // Flatten the queries from all requests
+    let allQueries = [];
+    requestsWithQueries.forEach(req => {
+        if (req.db_queries) {
+            req.db_queries.forEach(query => {
+                // Get engine name from metadata if available
+                let engineName = 'Unknown';
+                if (query.metadata) {
+                    engineName = query.metadata.name || query.metadata.dialect || 'Unknown';
+                }
+                
+                allQueries.push({
+                    endpoint: `${req.method} ${req.path}`,
+                    statement: query.statement,
+                    duration: query.duration,
+                    timestamp: req.start_time,
+                    metadata: query.metadata || {},
+                    engine: engineName
+                });
+            });
+        }
+    });
+    
+    // Sort by timestamp (most recent first)
+    allQueries.sort((a, b) => b.timestamp - a.timestamp);
+    
+    // Take only the most recent 20 queries
+    allQueries = allQueries.slice(0, 20);
+    
+    // Render table rows
+    allQueries.forEach(query => {
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.classList.add('hover-highlight');
+        
+        // Truncate very long queries for display
+        let displayStatement = query.statement;
+        if (displayStatement.length > 100) {
+            displayStatement = displayStatement.substring(0, 97) + '...';
+        }
+        
+        // Detect database type
+        const dbType = detectDatabaseType(query.statement);
+        
+        // Get engine name
+        const engineName = query.engine || dbType;
+        
+        // Get query type
+        const queryType = query.metadata?.query_type || detectQueryType(query.statement);
+        const queryTypeBadge = getQueryTypeBadge(queryType);
+        
+        row.innerHTML = `
+            <td class="text-gray-700">${query.endpoint}</td>
+            <td class="font-mono text-xs" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <div class="d-flex align-items-center">
+                    <span class="badge ${queryTypeBadge.color} me-2" style="font-weight: 600; min-width: 70px; text-align: center; flex-shrink: 0;">${queryTypeBadge.label}</span>
+                    <i class="ti ti-click me-1 text-primary" style="font-size: 14px; flex-shrink: 0;"></i>
+                    <span class="text-dark" style="font-weight: 500; overflow: hidden; text-overflow: ellipsis;">${displayStatement}</span>
+                </div>
+            </td>
+            <td class="text-indigo-600 font-medium">${(query.duration * 1000).toFixed(2)} ms</td>
+            <td class="text-gray-500">${formatTimeAgo(query.timestamp)}</td>
+            <td><span class="badge bg-azure text-white" style="font-weight: 500;">${engineName}</span></td>
+        `;
+        
+        // Add click handler to show full query details
+        row.addEventListener('click', () => {
+            showSqlDetails(query);
+        });
+        
+        tableBody.appendChild(row);
+    });
+}
+
+// Database time chart
+let dbTimeChart;
+let lastDbChartData = { timeData: [], percentageData: [] };
+
+function updateDbTimeChart() {
+    if (!dashboardData.database || !dashboardData.requests.recent) {
+        return;
+    }
+    
+    // Get recent requests with database queries
+    const recentRequests = dashboardData.requests.recent || [];
+    const requestsWithQueries = recentRequests.filter(req => req.db_count > 0);
+    
+    if (requestsWithQueries.length === 0) {
+        return;
+    }
+    
+    // Sort by timestamp
+    requestsWithQueries.sort((a, b) => a.start_time - b.start_time);
+    
+    // Prepare data for chart
+    const dbTimeData = requestsWithQueries.map(req => ({
+        x: new Date(req.start_time * 1000).getTime(),
+        y: req.db_time * 1000, // Convert to ms
+        endpoint: `${req.method} ${req.path}`,
+        count: req.db_count
+    }));
+    
+    // Calculate percentage of time spent in DB
+    const dbPercentageData = requestsWithQueries.map(req => ({
+        x: new Date(req.start_time * 1000).getTime(),
+        y: (req.db_time / req.total_time) * 100, // Percentage
+        endpoint: `${req.method} ${req.path}`,
+        count: req.db_count
+    }));
+    
+    // Check if data has changed to avoid unnecessary updates
+    const dataChanged = JSON.stringify(dbTimeData) !== JSON.stringify(lastDbChartData.timeData) ||
+                        JSON.stringify(dbPercentageData) !== JSON.stringify(lastDbChartData.percentageData);
+    
+    // Store current data for future comparison
+    lastDbChartData.timeData = dbTimeData;
+    lastDbChartData.percentageData = dbPercentageData;
+    
+    if (dbTimeChart) {
+        // Only update if data changed and not interacting with chart
+        if (dataChanged && (!isUserInteracting || !document.getElementById('db-time-chart').matches(':hover'))) {
+            dbTimeChart.updateSeries([
+                {
+                    name: 'DB Time (ms)',
+                    data: dbTimeData
+                },
+                {
+                    name: 'DB Time (%)',
+                    data: dbPercentageData
+                }
+            ], false, true); // Use quiet update to prevent animations
+        }
+    } else {
+        // Create a new chart
+        const options = {
+            series: [
+                {
+                    name: 'DB Time (ms)',
+                    data: dbTimeData,
+                    type: 'column'
+                },
+                {
+                    name: 'DB Time (%)',
+                    data: dbPercentageData,
+                    type: 'line'
+                }
+            ],
+            chart: {
+                height: 350,
+                type: 'line',
+                toolbar: {
+                    show: true
+                },
+                animations: {
+                    enabled: true,
+                    easing: 'easeinout',
+                    speed: 800
+                }
+            },
+            stroke: {
+                width: [0, 4],
+                curve: 'smooth'
+            },
+            plotOptions: {
+                bar: {
+                    columnWidth: '50%',
+                    borderRadius: 4
+                }
+            },
+            dataLabels: {
+                enabled: false
+            },
+            markers: {
+                size: 5,
+                colors: ['transparent', '#16a34a'],
+                strokeColors: '#fff',
+                strokeWidth: 2,
+                hover: {
+                    size: 7
+                }
+            },
+            colors: ['#3b82f6', '#16a34a'], // Blue for time, green for percentage
+            xaxis: {
+                type: 'datetime',
+                labels: {
+                    datetimeUTC: false,
+                    format: 'HH:mm:ss'
+                }
+            },
+            yaxis: [
+                {
+                    title: {
+                        text: 'DB Time (ms)'
+                    },
+                    labels: {
+                        formatter: function(val) {
+                            return val.toFixed(2);
+                        }
+                    }
+                },
+                {
+                    opposite: true,
+                    title: {
+                        text: 'DB Time (%)'
+                    },
+                    labels: {
+                        formatter: function(val) {
+                            return Math.round(val) + '%';
+                        }
+                    },
+                    min: 0,
+                    max: 100
+                }
+            ],
+            tooltip: {
+                shared: true,
+                intersect: false,
+                y: {
+                    formatter: function(value, { seriesIndex, dataPointIndex, w }) {
+                        if (seriesIndex === 0) {
+                            return `${value.toFixed(2)} ms`;
+                        } else {
+                            return `${Math.round(value)}%`;
+                        }
+                    }
+                }
+            }
+        };
+
+        dbTimeChart = new ApexCharts(document.getElementById('db-time-chart'), options);
+        dbTimeChart.render();
+    }
 }
 
 // Update stat cards
@@ -135,6 +1138,15 @@ function updateStats() {
     document.getElementById('stat-p95-response-time').textContent = formatTime(stats.p95_response_time) + ' ms';
     document.getElementById('stat-max-response-time').textContent = formatTime(stats.max_response_time) + ' ms';
     document.getElementById('stat-unique-endpoints').textContent = stats.unique_endpoints;
+    
+    // Update database stats if available
+    if (dashboardData.database) {
+        const dbStats = dashboardData.database;
+        document.getElementById('stat-db-queries').textContent = dbStats.query_count;
+        document.getElementById('stat-db-avg-time').textContent = formatTime(dbStats.avg_time) + ' ms';
+        document.getElementById('stat-db-max-time').textContent = formatTime(dbStats.max_time) + ' ms';
+        document.getElementById('stat-db-total-time').textContent = formatTime(dbStats.total_time) + ' ms';
+    }
 }
 
 // Update slowest endpoints table
@@ -645,7 +1657,7 @@ function updateStatusCodeChart() {
                 },
                 labels: {
                     formatter: function(val) {
-                        return Math.round(val);
+                        return val.toFixed(2);
                     }
                 }
             },
@@ -1131,7 +2143,7 @@ function updateEndpointDistributionChart() {
                     },
                     labels: {
                         formatter: function(val) {
-                            return Math.round(val);
+                            return val.toFixed(2);
                         }
                     }
                 },
@@ -1142,7 +2154,7 @@ function updateEndpointDistributionChart() {
                     },
                     labels: {
                         formatter: function(val) {
-                            return Math.round(val);
+                            return val.toFixed(2);
                         }
                     }
                 }
