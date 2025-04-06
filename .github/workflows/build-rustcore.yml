@@ -89,7 +89,7 @@ jobs:
       - name: Run tests
         run: |
           poetry config virtualenvs.create false
-          poetry install --with dev --extras standard
+          poetry install --with dev --extras all
           poetry run pytest
 
   publish-to-pypi:
