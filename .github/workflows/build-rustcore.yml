@@ -126,8 +126,18 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          ref: main  # Ensure we have the latest changes from version bump
-
+          ref: main
+          fetch-depth: 0
+      - name: Fetch latest commit
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Current version: $(grep '^version = "' fastapi_profiler/rustcore/Cargo.toml | cut -d '"' -f2)"
+      - name: Verify versions
+        run: |
+          echo "Cargo.toml: $(grep '^version = "' fastapi_profiler/rustcore/Cargo.toml)"
+          echo "setup.py: $(grep 'version=' fastapi_profiler/rustcore/setup.py)"
+          echo "PyPI check version: ${{ needs.determine-version.outputs.bumped_version }}"
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
