@@ -1,3 +1,51 @@
+## [0.3.0](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.5...v0.3.0) (2025-04-06)
+
+
+### Features
+
+* Extend middleware, profiler, and stats for Database statistics and profiling ([c54942c](https://github.com/al91liwo/fastapi-profiler-lite/commit/c54942cd308e14b2250c87e4814ec151526e3067))
+* Implement Database Profiler ([4feb091](https://github.com/al91liwo/fastapi-profiler-lite/commit/4feb091bd55189c6f127e4d48074dd775e6a6845))
+
+
+### Bug Fixes
+
+* CI/CD pytest by installing all extras ([0c8e1b1](https://github.com/al91liwo/fastapi-profiler-lite/commit/0c8e1b160e8ff66c95832a8703d110722439e327))
+
+
+### Documentation
+
+* Add extensive examples for Database Profiler ([8fdc36b](https://github.com/al91liwo/fastapi-profiler-lite/commit/8fdc36b918c338355653b7172fe88cacf4882894))
+* Update README with pyo3 link and examples/ usage ([5bae178](https://github.com/al91liwo/fastapi-profiler-lite/commit/5bae1784d4d19c928ae3c62c29bc56c108def62f))
+
+
+### Code Refactoring
+
+* Order of pymethods in rustcore ([49c8ca0](https://github.com/al91liwo/fastapi-profiler-lite/commit/49c8ca0d7a312c153df2b734118987d77993b794))
+
+
+### Tests
+
+* Implement extensive instrumentation testing for edge cases ([deb711c](https://github.com/al91liwo/fastapi-profiler-lite/commit/deb711c0b44d934bf9ce92e8d0817d3c71861d97))
+
+
+### Continuous Integration
+
+* Enable windows build pipeline force remove wheels ([68e8ebd](https://github.com/al91liwo/fastapi-profiler-lite/commit/68e8ebdd47f1243a0efc00462a89f9cac944cf6c))
+* fix Pipeline by installing built wheel after installing standard packages ([4200413](https://github.com/al91liwo/fastapi-profiler-lite/commit/42004139b61ca1762c2644a6fda50f920d85618f))
+* Force clean build and consolidate twine upload pipeline ([c1e20e5](https://github.com/al91liwo/fastapi-profiler-lite/commit/c1e20e55e14df978176c50f1c327a4be69bb75f1))
+
+
+### Chores
+
+* add fastapi-profiler-rust dependencies ([7a02100](https://github.com/al91liwo/fastapi-profiler-lite/commit/7a02100e2d92398270e83d66cac8d65d679de622))
+* bump cargo.lock rustcore ([56dc6ca](https://github.com/al91liwo/fastapi-profiler-lite/commit/56dc6ca1859e30fcb9b78c9dd7fc83ebd28fca2f))
+* bump rustcore version 0.2.19 ([e7044df](https://github.com/al91liwo/fastapi-profiler-lite/commit/e7044df0401872284c412e1e73913ef438e81995))
+* **rustcore:** bump rustcore version to 0.2.20 [skip ci] ([80ca2cd](https://github.com/al91liwo/fastapi-profiler-lite/commit/80ca2cd5bc9475aa80196ab5ad0ce99764b678f2))
+* integrate sqlparse and sqlalchemy to core ([0bcbf0e](https://github.com/al91liwo/fastapi-profiler-lite/commit/0bcbf0ef24740d3839b8dfbd577fd9aade19c49c))
+* regenerate lockfile ([d97595d](https://github.com/al91liwo/fastapi-profiler-lite/commit/d97595dce7f8ceb5afe3ce6a2fe953c33ae2b115))
+* ruff format ([a40cbad](https://github.com/al91liwo/fastapi-profiler-lite/commit/a40cbadfbd797a4b8ff6ed5b0ee6fcf962ab14d7))
+* trigger pipeline ([d52fd4d](https://github.com/al91liwo/fastapi-profiler-lite/commit/d52fd4dcb920b8f7dfa619593bc571aadcd60a09))
+
 ## [0.2.5](https://github.com/al91liwo/fastapi-profiler-lite/compare/v0.2.4...v0.2.5) (2025-04-05)
 
 
