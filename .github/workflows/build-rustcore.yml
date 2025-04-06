@@ -44,9 +44,13 @@ jobs:
         run: pip install maturin
 
       - name: Clean any cached builds
+        shell: bash
         run: |
-          rm -rf fastapi_profiler/rustcore/target
-          find . -name "*.so" -delete || true
+          if [ -d "fastapi_profiler/rustcore/target" ]; then
+            rm -rf fastapi_profiler/rustcore/target
+          fi
+
+          find . -name "*.so" -exec rm -f {} +
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
