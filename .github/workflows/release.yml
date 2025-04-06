@@ -27,15 +27,30 @@ jobs:
           git fetch origin
           git reset --hard origin/main
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Update Rust dependency version
+        run: |
+          RUST_VERSION="${{ needs.call-rustcore.outputs.rust_version }}"
+          echo "Updating dependency on fastapi-profiler-rust to version $RUST_VERSION"
+          
+          # Use the sync_versions.py script to update only the dependency references
+          python scripts/sync_versions.py --update-dependency fastapi-profiler-rust ">=$RUST_VERSION"
+          
+          # Commit the changes
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add pyproject.toml setup.py
+          git commit -m "chore: update fastapi-profiler-rust dependency to >=$RUST_VERSION" || echo "No changes to commit"
+          git push || echo "No changes to push"
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -45,6 +60,11 @@ jobs:
       - name: Install semantic-release
         run: |
           npm install -g semantic-release @semantic-release/git @semantic-release/exec @semantic-release/changelog conventional-changelog-conventionalcommits@7.0.2
+
+      - name: Ensure branch is up-to-date again
+        run: |
+          git fetch origin
+          git reset --hard origin/main
 
       - name: Configure Git
         run: |

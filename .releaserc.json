@@ -40,17 +40,13 @@
     "@semantic-release/changelog",
     ["@semantic-release/exec", {
       "verifyConditionsCmd": "echo 'Verifying conditions...'",
-      "prepareCmd": "python scripts/sync_versions.py ${nextRelease.version}"
+      "prepareCmd": "python scripts/sync_versions.py --main-only ${nextRelease.version}"
     }],
     ["@semantic-release/git", {
       "assets": [
         "pyproject.toml", 
         "setup.py", 
         "fastapi_profiler/__init__.py", 
-        "fastapi_profiler/rustcore/Cargo.toml",
-        "fastapi_profiler/rustcore/pyproject.toml",
-        "fastapi_profiler/rustcore/setup.py",
-        "fastapi_profiler/rustcore/__init__.py",
         "CHANGELOG.md"
       ],
       "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"

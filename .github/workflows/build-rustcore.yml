@@ -1,7 +1,11 @@
 name: Build, Test and Publish Rust Core
 
 on:
-  workflow_call: {}
+  workflow_call:
+    outputs:
+      rust_version:
+        description: "The version of the Rust package that was published"
+        value: ${{ jobs.determine-version.outputs.bumped_version }}
   workflow_dispatch:
 
 permissions:
