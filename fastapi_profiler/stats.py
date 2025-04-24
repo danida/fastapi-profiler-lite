@@ -12,13 +12,14 @@ class AggregatedStats:
 
         # Database statistics
         # TODO: move this juicer to rustcore
-        self.db_stats = {
-            "total_time": 0.0,
-            "query_count": 0,
-            "avg_time": 0.0,
-            "max_time": 0.0,
-            "min_time": float("inf"),
-        }
+        ##self.db_stats = {
+        ##    "total_time": 0.0,
+        ##    "query_count": 0,
+        ##    "avg_time": 0.0,
+        ##    "max_time": 0.0,
+        ##    "min_time": float("inf"),
+        ##}
+
 
         # Engine-specific statistics
         self.engine_stats = {}
@@ -28,26 +29,9 @@ class AggregatedStats:
         self._impl.update(json.dumps(profile))
 
         # Update database statistics
-        db_time = profile.get("db_time", 0)
         db_count = profile.get("db_count", 0)
 
         if db_count > 0:
-            self.db_stats["total_time"] += db_time
-            self.db_stats["query_count"] += db_count
-
-            # Update max/min times
-            self.db_stats["max_time"] = max(self.db_stats["max_time"], db_time)
-
-            # Only update min time if we have queries
-            if db_time > 0:
-                self.db_stats["min_time"] = min(self.db_stats["min_time"], db_time)
-
-            # Recalculate average
-            if self.db_stats["query_count"] > 0:
-                self.db_stats["avg_time"] = (
-                    self.db_stats["total_time"] / self.db_stats["query_count"]
-                )
-
             # Update engine-specific statistics if db_queries are available
             if "db_queries" in profile:
                 for query in profile["db_queries"]:

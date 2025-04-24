@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::f64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndpointStats {
@@ -36,6 +37,15 @@ pub struct StatusCodeDistribution {
     pub count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
+pub struct DBStats {
+    pub query_count: u64,
+    pub total_time: f64,
+    pub min_time: f64,
+    pub max_time: f64,
+    pub avg_time: f64,
+}
+
 #[pyclass]
 pub struct PyAggregatedStats {
     endpoints: HashMap<String, EndpointStats>,
@@ -48,6 +58,7 @@ pub struct PyAggregatedStats {
     buffer_size: usize,
     buffer_idx: usize,
     sorted_times: Option<Vec<f64>>,
+    db_stats: Option<DBStats>,
 }
 
 #[pymethods]
@@ -66,6 +77,13 @@ impl PyAggregatedStats {
             buffer_size,
             buffer_idx: 0,
             sorted_times: None,
+            db_stats: Some(DBStats {
+                query_count: 0,
+                total_time: 0.0,
+                min_time: 0.0,
+                max_time: 0.0,
+                avg_time: 0.0,
+            }),
         }
     }
 
@@ -75,18 +93,28 @@ impl PyAggregatedStats {
                 self.update_from_json(&profile_json);
                 Ok(())
             }
-            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid JSON: {}", e))),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid JSON: {}",
+                e
+            ))),
         }
     }
 
-    pub fn update_stats(&mut self, method: &str, path: &str, time_secs: f64) -> PyResult<()> {
-        self.update_internal(method, path, time_secs);
+    pub fn update_stats(
+        &mut self,
+        method: &str,
+        path: &str,
+        time_secs: f64,
+        db_time: f64,
+        db_count: u64,
+    ) -> PyResult<()> {
+        self.update_internal(method, path, time_secs, db_time, db_count);
         Ok(())
     }
 
-    pub fn update_batch(&mut self, requests: Vec<(&str, &str, f64)>) -> PyResult<()> {
-        for (method, path, time_secs) in requests {
-            self.update_internal(method, path, time_secs);
+    pub fn update_batch(&mut self, requests: Vec<(&str, &str, f64, f64, u64)>) -> PyResult<()> {
+        for (method, path, time_secs, db_time, db_count) in requests {
+            self.update_internal(method, path, time_secs, db_time, db_count);
         }
         Ok(())
     }
@@ -129,8 +157,9 @@ impl PyAggregatedStats {
             })
             .collect();
 
-        serde_json::to_string(&summaries)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e)))
+        serde_json::to_string(&summaries).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+        })
     }
 
     pub fn get_slowest_endpoints(&self, limit: Option<usize>) -> PyResult<String> {
@@ -147,11 +176,16 @@ impl PyAggregatedStats {
             })
             .collect();
 
-        summaries.sort_by(|a, b| b.avg.partial_cmp(&a.avg).unwrap_or(std::cmp::Ordering::Equal));
+        summaries.sort_by(|a, b| {
+            b.avg
+                .partial_cmp(&a.avg)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         summaries.truncate(limit.unwrap_or(5));
 
-        serde_json::to_string(&summaries)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e)))
+        serde_json::to_string(&summaries).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+        })
     }
 
     pub fn get_method_distribution(&self) -> PyResult<String> {
@@ -164,8 +198,9 @@ impl PyAggregatedStats {
             })
             .collect();
 
-        serde_json::to_string(&distribution)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e)))
+        serde_json::to_string(&distribution).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+        })
     }
 
     pub fn get_status_code_distribution(&self) -> PyResult<String> {
@@ -178,8 +213,9 @@ impl PyAggregatedStats {
             })
             .collect();
 
-        serde_json::to_string(&distribution)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e)))
+        serde_json::to_string(&distribution).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+        })
     }
 
     pub fn get_endpoint_distribution(&self, limit: Option<usize>) -> PyResult<String> {
@@ -199,8 +235,9 @@ impl PyAggregatedStats {
         summaries.sort_by(|a, b| b.count.cmp(&a.count));
         summaries.truncate(limit.unwrap_or(10));
 
-        serde_json::to_string(&summaries)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e)))
+        serde_json::to_string(&summaries).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+        })
     }
 
     pub fn get_avg_response_time(&self) -> f64 {
@@ -230,15 +267,24 @@ impl PyAggregatedStats {
         let path = profile["path"].as_str().unwrap_or("/").to_string();
         let time_value = profile["total_time"].as_f64().unwrap_or(0.0);
         let status_code = profile["status_code"].as_u64().unwrap_or(0) as u16;
+        let db_time = profile["db_time"].as_f64().unwrap_or(0.0);
+        let db_count = profile["db_count"].as_u64().unwrap_or(0);
 
-        self.update_internal(&method, &path, time_value);
+        self.update_internal(&method, &path, time_value, db_time, db_count);
 
         if status_code > 0 {
             *self.status_codes.entry(status_code).or_insert(0) += 1;
         }
     }
 
-    fn update_internal(&mut self, method: &str, path: &str, time_value: f64) {
+    fn update_internal(
+        &mut self,
+        method: &str,
+        path: &str,
+        time_value: f64,
+        db_time: f64,
+        db_count: u64,
+    ) {
         let key = format!("{} {}", method, path);
 
         let endpoint = self.endpoints.entry(key).or_insert_with(|| EndpointStats {
@@ -267,6 +313,22 @@ impl PyAggregatedStats {
         self.response_buffer[self.buffer_idx] = time_value;
         self.buffer_idx = (self.buffer_idx + 1) % self.buffer_size;
 
+        if db_time > 0.0 {
+            self.db_stats.unwrap().query_count += db_count;
+            self.db_stats.unwrap().total_time += db_time;
+            //set max time
+            self.db_stats.unwrap().max_time = self.db_stats.unwrap().max_time.max(db_time);
+            //set min time
+            if db_time > 0.0 {
+                self.db_stats.unwrap().min_time = self.db_stats.unwrap().min_time.min(db_time);
+            }
+            // Recalculate average
+            if self.db_stats.unwrap().query_count > 0 {
+                self.db_stats.unwrap().avg_time =
+                    self.db_stats.unwrap().total_time / self.db_stats.unwrap().query_count as f64;
+            }
+        }
+
         self.sorted_times = None;
     }
 }
@@ -279,13 +341,15 @@ mod tests {
     #[test]
     fn test_update_stats() {
         let mut stats = PyAggregatedStats::new(Some(1000));
-        stats.update_stats("GET", "/test", 0.5).unwrap();
+        stats.update_stats("GET", "/test", 0.5, 0, 0).unwrap();
 
         assert_eq!(stats.get_total_requests(), 1);
         assert_eq!(stats.get_avg_response_time(), 0.5);
         assert_eq!(stats.get_max_time(), 0.5);
 
-        let endpoint_stats = serde_json::from_str::<Vec<EndpointSummary>>(&stats.get_endpoint_stats().unwrap()).unwrap();
+        let endpoint_stats =
+            serde_json::from_str::<Vec<EndpointSummary>>(&stats.get_endpoint_stats().unwrap())
+                .unwrap();
         assert_eq!(endpoint_stats.len(), 1);
         assert_eq!(endpoint_stats[0].method, "GET");
         assert_eq!(endpoint_stats[0].path, "/test");
@@ -298,7 +362,9 @@ mod tests {
         let mut stats = PyAggregatedStats::new(Some(1000));
 
         for i in 1..=100 {
-            stats.update_stats("GET", "/test", i as f64 / 100.0).unwrap();
+            stats
+                .update_stats("GET", "/test", i as f64 / 100.0, 0, 0)
+                .unwrap();
         }
 
         assert_eq!(stats.get_percentile(50.0), 0.5);
@@ -312,9 +378,12 @@ mod tests {
         let mut stats = PyAggregatedStats::new(Some(1000));
 
         let batch = vec![
-            ("GET", "/users", 0.1),
-            ("POST", "/items", 0.2),
-            ("PUT", "/orders", 0.3),
+            ("GET", "/users", 0.1, 0, 0),
+            ("POST", "/items", 0.2, 0, 0),
+            ("PUT", "/orders", 0.3, 0, 0),
+            ("POST", "/items", 0.2, 0, 0),
+            ("GET", "/users", 0.1, 0, 0),
+            ("PUT", "/orders", 0.3, 0, 0),
         ];
 
         stats.update_batch(batch).unwrap();
